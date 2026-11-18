@@ -26,6 +26,10 @@
 
   @param[in] jsonpath= Path to Dataset-JSON file
   @param[in] jsonfref= File reference for the Dataset-JSON file. Either jsonpath or jsonfref has to be sppecified.
+  @param[in] compressed= (N) Read Dataset-JSON Compressed (DSJC)? (Y/N)
+    DSJC is the NDJSON representation of Dataset-JSON compressed as gzip.
+    When omitted, the value is derived from the input file extension:
+    .dsjc selects Y, all other extensions select N.
   @param[out] datalib= Library to save SAS data set
   @param[in] savemetadata= (Y) Use Define-XML metadata? (Y/N)
   @param[out] metadatalib= (work) Library to save the metadata datasets
@@ -41,7 +45,8 @@
   jsonfref=,
   datalib=,
   savemetadata=Y,
-  metadatalib=work
+  metadatalib=work,
+  compressed=
   ) / des = 'Read a Dataset-JSON file to a SAS dataset';
 
   %local _Missing
@@ -52,7 +57,8 @@
          metadata_study_columns metadata_tables_columns metadata_columns_columns
          _items_ _itemdata_ _records _ItemGroupOID _ItemGroupName _ItemGroupLabel
          variables rename label length format
-         _var_exist _decimal_variables _iso8601_variables;
+         _var_exist _decimal_variables _iso8601_variables
+         _compressed _source_path _ext _temp_ndjson _temp_json _decompress_failed;
 
   %let _Random=%sysfunc(putn(%sysevalf(%sysfunc(ranuni(0))*10000,floor),z4.));
 
@@ -147,6 +153,80 @@
   %******************************************************************************;
   %* End of parameter checks                                                    *;
   %******************************************************************************;
+
+  %* Determine whether the input is Dataset-JSON Compressed (DSJC);
+  %let _compressed=;
+  %if %sysevalf(%superq(compressed)=, boolean) %then %do;
+    %if %sysevalf(%superq(jsonpath)=, boolean)=0 %then %let _source_path=&jsonpath;
+    %else %let _source_path=%sysfunc(pathname(&jsonfref));
+    %let _ext=%upcase(%scan(&_source_path, -1, %str(.)));
+    %if "&_ext" = "DSJC" or "&_ext" = "GZ" %then %let _compressed=Y;
+    %else %let _compressed=N;
+  %end;
+  %else %let _compressed=%upcase(%substr(&compressed,1,1));
+
+  %if "&_compressed" ne "Y" and "&_compressed" ne "N" %then %do;
+    %put ERR%str(OR): [&sysmacroname] Macro parameter &=compressed must be Y or N.;
+    %goto exit_macro;
+  %end;
+
+  %if "&_compressed" = "Y" %then %do;
+    %if %sysevalf(%superq(jsonpath)=, boolean)=0 %then %let _source_path=&jsonpath;
+    %else %let _source_path=%sysfunc(pathname(&jsonfref));
+
+    %let _temp_ndjson = %sysfunc(pathname(work))/dsjcnd_&_Random..ndjson;
+    %let _temp_json   = %sysfunc(pathname(work))/dsjcjs_&_Random..json;
+    %let _decompress_failed = 0;
+
+    %* Decompress gzip encoded Dataset-NDJSON;
+    filename dsj&_Random ZIP "&_source_path" GZIP lrecl=32767;
+    filename ndj&_Random "&_temp_ndjson" lrecl=32767;
+    data _null_;
+      _rc = fcopy("dsj&_Random", "ndj&_Random");
+      if _rc ne 0 then do;
+        putlog "ERR" "OR: [&sysmacroname] Could not decompress DSJC file &_source_path.";
+        putlog "ERR" "OR: [&sysmacroname] " _rc=;
+        call symputx('_decompress_failed', 1);
+      end;
+    run;
+    filename dsj&_Random clear;
+    filename ndj&_Random clear;
+
+    %if &_decompress_failed %then %goto exit_macro;
+
+    %* Convert Dataset-NDJSON to a single Dataset-JSON document;
+    filename ndj&_Random "&_temp_ndjson" encoding='utf-8' lrecl=32767;
+    filename cmb&_Random "&_temp_json" encoding='utf-8' lrecl=32767;
+    data _null_;
+      infile ndj&_Random lrecl=32767 end=_eof;
+      file cmb&_Random;
+      length _line $32767 _len 8;
+      retain _rowcount 0;
+
+      input;
+      if _n_ = 1 then do;
+        _line = prxchange('s/[[:space:]]+$//', 1, strip(_infile_));
+        if substr(_line, 1, 3) = 'EFBBBF'x then _line = substr(_line, 4);
+        if length(_line) > 0 and substr(_line, 1, 1) = '{' then _line = substr(_line, 2);
+        if length(_line) > 0 and substr(_line, length(_line), 1) = '}' then
+          _line = substr(_line, 1, length(_line) - 1);
+        _len = length(_line);
+        put _line $varying32767. _len;
+        put ',"rows":[';
+      end;
+      else if not missing(_infile_) then do;
+        if _rowcount > 0 then put ',';
+        put _infile_;
+        _rowcount + 1;
+      end;
+      if _eof then put ']}';
+    run;
+    filename ndj&_Random clear;
+    filename cmb&_Random clear;
+
+    %let jsonpath = &_temp_json;
+    %let jsonfref =;
+  %end;
 
   %* Save options;
   %let _SaveOptions3 = %sysfunc(getoption(compress, keyword)) %sysfunc(getoption(reuse, keyword));
@@ -567,6 +647,22 @@
 
 
   %exit_macro:
+
+  %* Remove temporary files used for Dataset-JSON Compressed;
+  %if %sysevalf(%superq(_temp_ndjson)=, boolean)=0 %then %do;
+    %if %sysfunc(fileexist("&_temp_ndjson")) %then %do;
+      filename del&_Random "&_temp_ndjson";
+      %put %sysfunc(fdelete(del&_Random));
+      filename del&_Random clear;
+    %end;
+  %end;
+  %if %sysevalf(%superq(_temp_json)=, boolean)=0 %then %do;
+    %if %sysfunc(fileexist("&_temp_json")) %then %do;
+      filename del&_Random "&_temp_json";
+      %put %sysfunc(fdelete(del&_Random));
+      filename del&_Random clear;
+    %end;
+  %end;
 
   %* Restore dlcreatedir and valivarname options;
   options &_SaveOptions1;

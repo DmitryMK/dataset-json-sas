@@ -2,4 +2,5 @@
 !.gitignore
 !sashelp_class.sas
 !test_utf8.sas
+!test_dsjc.sas
 !ae_utf8.json

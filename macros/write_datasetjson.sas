@@ -49,6 +49,11 @@
   @param[in] itemGroupOID= Unique identifier for the dataset that may also function as a foreign key to an ItemGroupDef/@OID in an associated Define-XML file.
   @param[in] datasetlabel= Dataset label
   @param[in] pretty= (NOPRETTY) Format Dataset-JSON file (PRETTY/NOPRETTY).
+  @param[in] compressed= (N) Write Dataset-JSON Compressed (DSJC)? (Y/N)
+    DSJC is the NDJSON representation of Dataset-JSON compressed as gzip.
+    When omitted, the value is derived from the output file extension:
+    .dsjc selects Y, all other extensions select N.
+    The recommended file extension for DSJC is .dsjc.
 
   <h4> Related Macros </h4>
   @li write_datasetjson_1_0.sas
@@ -73,7 +78,8 @@
   metaDataRef=,
   itemGroupOID=,
   datasetlabel=,
-  pretty=NOPRETTY
+  pretty=NOPRETTY,
+  compressed=
   ) / des = 'Write a SAS dataset to a Dataset-JSON file';
 
   %local
@@ -88,6 +94,7 @@
     creationDateTime modifiedDateTime
     releaseCreated hostCreated
     _decimal_variables _iso8601_variables _format
+    _compressed _target_path _ext
     ;
 
 
@@ -155,6 +162,28 @@
       %put %sysfunc(sysmsg());
       %goto exit_macro;
     %end;
+  %end;
+
+  %* Determine whether Dataset-JSON Compressed (DSJC) is requested;
+  %let _compressed=;
+  %if %sysevalf(%superq(compressed)=, boolean) %then %do;
+    %if %sysevalf(%superq(jsonpath)=, boolean)=0 %then %let _target_path=&jsonpath;
+    %else %let _target_path=%sysfunc(pathname(&jsonfref));
+    %let _ext=%upcase(%scan(&_target_path, -1, %str(.)));
+    %if "&_ext" = "DSJC" or "&_ext" = "GZ" %then %let _compressed=Y;
+    %else %let _compressed=N;
+  %end;
+  %else %let _compressed=%upcase(%substr(&compressed,1,1));
+
+  %if "&_compressed" ne "Y" and "&_compressed" ne "N" %then %do;
+    %put ERR%str(OR): [&sysmacroname] Macro parameter &=compressed must be Y or N.;
+    %goto exit_macro;
+  %end;
+
+  %if "&_compressed" = "Y" %then %do;
+    %if %upcase(&pretty) ne NOPRETTY %then
+      %put WAR%str(NING): [&sysmacroname] Parameter pretty is ignored for Dataset-JSON Compressed.;
+    %let pretty=NOPRETTY;
   %end;
 
   %* Rule: usemetadata has to be Y or N  *;
@@ -598,7 +627,8 @@
     tableMetadata=work.table_metadata,
     columnMetadata=work.column_metadata,
     rowdata=&dataset_new,
-    prettyNoPretty=&pretty
+    prettyNoPretty=&pretty,
+    compressed=&_compressed
   );
 
   filename json&_random clear;

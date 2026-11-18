@@ -57,6 +57,39 @@ More information:
 [![Python 3.9](https://img.shields.io/badge/python-3.9-blue.svg)](https://www.python.org/downloads/release/python-390/)
 [![Python 3.10](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/release/python-3100/)
 
+## Dataset-JSON Compressed (DSJC)
+
+The read and write macros support Dataset-JSON Compressed (DSJC), the NDJSON
+representation of Dataset-JSON compressed with gzip. Files use the `.dsjc` extension.
+
+Write a compressed file. The `.dsjc` extension selects compressed output automatically:
+
+```SAS
+%write_datasetjson(
+  dataset=datasdtm.dm,
+  jsonpath=&project_folder/json_out/sdtm/dm.dsjc);
+```
+
+Use `compressed=Y` when the output file does not have a `.dsjc` extension:
+
+```SAS
+%write_datasetjson(
+  dataset=datasdtm.dm,
+  jsonpath=&project_folder/json_out/sdtm/dm.json.dsjc,
+  compressed=Y);
+```
+
+Read a compressed file. The `.dsjc` extension is detected automatically:
+
+```SAS
+%read_datasetjson(
+  jsonpath=&project_folder/json_out/sdtm/dm.dsjc,
+  datalib=datasdtm,
+  savemetadata=N);
+```
+
+SAS 9.4M5 or later is required for native gzip support (`FILENAME ZIP ... GZIP`).
+
 ## Documentation
 
 Documentation is in the **doc** folder (not updated yet for Dataset-JSON v1.1):
@@ -77,6 +110,9 @@ Documentation is in the **doc** folder (not updated yet for Dataset-JSON v1.1):
 The **test_big_xpt** folder contains a SAS program to create a large XPT file (5Gb) from the XPT file **data/sdtm/lb.xpt**. The program will then create a Dataset-JSON file from that large XPT file, and also convert that large Dataset-JSON file back to a SAS dataset.
 
 The **test_datetime** folder contains a SAS program to test numeric date/time variables.
+
+The **test** folder contains `test_dsjc.sas`, which demonstrates writing and reading
+Dataset-JSON Compressed (`.dsjc`) files.
 
 ## Issues
 

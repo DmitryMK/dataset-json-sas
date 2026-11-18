@@ -37,7 +37,7 @@ On Windows with local SAS, run all via: `programs/runbatch.cmd` (requires editin
 
 ### Internal Helpers (`macros/internal/`)
 
-Type conversion macros (`convert_*.sas`), JSON map generation (`write_json_map.sas`), metadata array writing (`write_json_metadata_array.sas`), and zero-observation dataset handling (`create_zero_obs_dataset.sas`). The `cstutil*.sas` macros are CDISC utility macros (Apache 2.0 licensed).
+Type conversion macros (`convert_*.sas`), JSON map generation (`write_json_map.sas`), metadata array writing (`write_json_metadata_array.sas`), NDJSON row writing for compressed Dataset-JSON (`write_ndjson_rows.sas`), and zero-observation dataset handling (`create_zero_obs_dataset.sas`). The `cstutil*.sas` macros are CDISC utility macros (Apache 2.0 licensed).
 
 ### Metadata-Driven Design
 
